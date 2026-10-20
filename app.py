@@ -10,7 +10,6 @@ estado_robot = {
     "ultima_notificacion": "Sin alertas registradas"
 }
 
-# Plantilla HTML simple e interactiva para ver desde tu celular o PC
 HTML_PANEL = """
 <!DOCTYPE html>
 <html lang="es">
@@ -60,14 +59,20 @@ HTML_PANEL = """
         function enviarComando(cmd) {
             fetch('/actualizar', {
                 method: 'POST',
-                headers: { 'Content-Type': 'json' },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ comando: cmd, notificacion: "Comando manual enviado desde el panel web" })
-            }).then(() => location.reload());
+            })
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('cmd').innerText = data.comando;
+            });
         }
 
         // Auto recargar cada 3 segundos para ver cambios en tiempo real
         setInterval(() => {
-            fetch('/estado').then(r => r.json()).then(data => {
+            fetch('/estado')
+            .then(r => r.json())
+            .then(data => {
                 document.getElementById('cmd').innerText = data.comando;
                 document.getElementById('alerta').innerText = data.ultima_notificacion;
                 document.getElementById('hora').innerText = "Hora: " + data.ultima_actualizacion;
@@ -78,33 +83,31 @@ HTML_PANEL = """
 </html>
 """
 
-# 1. Ruta principal (Panel Web)
 @app.route('/')
 def panel():
     return render_template_string(HTML_PANEL, estado=estado_robot)
 
-# 2. Ruta para el ESP8266 (Devuelve SOLO el texto limpio del comando)
 @app.route('/comando', methods=['GET'])
 def obtener_comando_esp():
     return estado_robot["comando"]
 
-# 3. Ruta para consultar todo el estado en formato JSON
 @app.route('/estado', methods=['GET'])
 def obtener_estado_json():
     return jsonify(estado_robot)
 
-# 4. Ruta que usará la IA (o tú) para actualizar órdenes y enviar alertas
 @app.route('/actualizar', methods=['POST'])
 def actualizar_comando():
-    data = request.get_json(silent=True) or request.form
+    data = request.get_json(silent=True) or {}
+    if not data and request.form:
+        data = request.form
+        
     nuevo_cmd = data.get('comando', 'detener').lower()
     notificacion = data.get('notificacion', 'Sin detalles')
     
     if nuevo_cmd in ['avanzar', 'retroceder', 'izquierda', 'derecha', 'detener']:
         estado_robot["comando"] = nuevo_cmd
         estado_robot["ultima_actualizacion"] = datetime.datetime.now().strftime("%H:%M:%S")
-        if 'notificacion' in data:
-            estado_robot["ultima_notificacion"] = notificacion
+        estado_robot["ultima_notificacion"] = notificacion
             
         return jsonify({"status": "ok", "comando": nuevo_cmd}), 200
     else:
